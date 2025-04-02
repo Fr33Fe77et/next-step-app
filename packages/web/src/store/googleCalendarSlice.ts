@@ -1,13 +1,16 @@
-import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
-import { 
-  initGoogleCalendarApi, 
-  signInToGoogle, 
-  fetchGoogleCalendarEvents,
-  GoogleEvent,
-  fetchCalendarList
-} from '../services/googleCalendarService';
+// FULLY CLEANED FILE: packages/web/src/store/googleCalendarSlice.ts
 
-interface CalendarSetting {
+import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
+import {
+  initGoogleCalendarApi,
+  signInToGoogle,
+  fetchGoogleCalendarEvents,
+  fetchCalendarList,
+  GoogleEvent,
+} from '../services/googleCalendarService';
+import { AppDispatch, RootState } from './index';
+
+export interface CalendarSetting {
   id: string;
   summary: string;
   description?: string;
@@ -15,7 +18,15 @@ interface CalendarSetting {
   backgroundColor?: string;
   visible: boolean;
   considerInConflicts: boolean;
-  calendarType: 'work' | 'personal' | 'household' | 'birthdays' | 'other_personal' | 'other_work';
+  calendarType:
+    | 'work'
+    | 'personal'
+    | 'household'
+    | 'birthdays'
+    | 'other_personal'
+    | 'other_work'
+    | 'personal_primary'
+    | 'not_defined';
 }
 
 interface GoogleCalendarState {
@@ -64,130 +75,108 @@ export const getCalendarList = createAsyncThunk(
   'googleCalendar/getCalendarList',
   async (_, { rejectWithValue }) => {
     try {
-      const calendars = await fetchCalendarList();
-      // Set default settings for each calendar
-      return calendars.map(calendar => ({
-        ...calendar,
-        visible: true,
-        considerInConflicts: true,
-        calendarType: calendar.primary ? 'work' as const : 'other_personal' as const,
-      }));
+      const response = await fetchCalendarList();
+      return response as CalendarSetting[];
     } catch (error) {
       return rejectWithValue('Failed to fetch calendar list');
     }
   }
 );
 
-export const updateCalendarSetting = createAsyncThunk(
-  'googleCalendar/updateCalendarSetting',
-  async (setting: Partial<CalendarSetting> & { id: string }, { getState }) => {
-    return setting;
-  }
-);
-
 export const getGoogleCalendarEvents = createAsyncThunk(
   'googleCalendar/getEvents',
-  async (
-    { startDate, endDate, calendarIds }: { startDate: Date; endDate: Date; calendarIds?: string[] },
-    { rejectWithValue }
-  ) => {
+  async (_, { rejectWithValue }) => {
     try {
-      const events = await fetchGoogleCalendarEvents(startDate, endDate, calendarIds);
+      const events = await fetchGoogleCalendarEvents();
       return events;
     } catch (error) {
-      return rejectWithValue('Failed to fetch Google Calendar events');
+      return rejectWithValue('Failed to fetch calendar events');
     }
   }
 );
 
-export interface GoogleCalendarList {
-  id: string;
-  summary: string;
-  description?: string;
-  primary?: boolean;
-  backgroundColor?: string;
-}
+export const toggleCalendarVisibility =
+  (id: string) => (dispatch: AppDispatch, getState: () => RootState) => {
+    const calendar = getState().googleCalendar.calendars.find((c) => c.id === id);
+    if (!calendar) return;
+    const updated = { ...calendar, visible: !calendar.visible };
+    dispatch(updateCalendarSetting(updated));
+  };
 
+export const toggleCalendarConflictConsideration =
+  (id: string) => (dispatch: AppDispatch, getState: () => RootState) => {
+    const calendar = getState().googleCalendar.calendars.find((c) => c.id === id);
+    if (!calendar) return;
+    const updated = { ...calendar, considerInConflicts: !calendar.considerInConflicts };
+    dispatch(updateCalendarSetting(updated));
+  };
+
+export const updateCalendarType =
+  (id: string, calendarType: CalendarSetting['calendarType']) =>
+  (dispatch: AppDispatch, getState: () => RootState) => {
+    const calendar = getState().googleCalendar.calendars.find((c) => c.id === id);
+    if (!calendar) return;
+    const updated = { ...calendar, calendarType };
+    dispatch(updateCalendarSetting(updated));
+  };
 
 const googleCalendarSlice = createSlice({
   name: 'googleCalendar',
   initialState,
   reducers: {
-    resetState: (state) => {
-      state.isSignedIn = false;
-      state.events = [];
-      state.error = null;
+    updateCalendarSetting: (state, action: PayloadAction<CalendarSetting>) => {
+      const idx = state.calendars.findIndex((c) => c.id === action.payload.id);
+      if (idx !== -1) {
+        state.calendars[idx] = action.payload;
+      }
     },
+    resetState: () => initialState,
   },
   extraReducers: (builder) => {
     builder
-      // Initialize
-      .addCase(initializeGoogleCalendar.pending, (state) => {
-        state.isLoading = true;
-        state.error = null;
-      })
       .addCase(initializeGoogleCalendar.fulfilled, (state) => {
         state.isInitialized = true;
-        state.isLoading = false;
-      })
-      .addCase(initializeGoogleCalendar.rejected, (state, action) => {
-        state.isLoading = false;
-        state.error = action.payload as string;
-      })
-      
-      // Login
-      .addCase(loginToGoogleCalendar.pending, (state) => {
-        state.isLoading = true;
-        state.error = null;
       })
       .addCase(loginToGoogleCalendar.fulfilled, (state) => {
         state.isSignedIn = true;
-        state.isLoading = false;
       })
-      .addCase(loginToGoogleCalendar.rejected, (state, action) => {
-        state.isLoading = false;
-        state.error = action.payload as string;
-      })
-      
-      // Get Events
-      .addCase(getGoogleCalendarEvents.pending, (state) => {
-        state.isLoading = true;
-        state.error = null;
-      })
-      .addCase(getGoogleCalendarEvents.fulfilled, (state, action) => {
-        state.events = action.payload;
-        state.isLoading = false;
-      })
-      .addCase(getGoogleCalendarEvents.rejected, (state, action) => {
-        state.isLoading = false;
-        state.error = action.payload as string;
-      })
-      
-      // Calendar List
       .addCase(getCalendarList.pending, (state) => {
         state.isLoading = true;
       })
-      .addCase(getCalendarList.fulfilled, (state, action) => {
+      .addCase(getCalendarList.fulfilled, (state, action: PayloadAction<CalendarSetting[]>) => {
         state.calendars = action.payload;
         state.isLoading = false;
+        state.error = null;
       })
       .addCase(getCalendarList.rejected, (state, action) => {
         state.isLoading = false;
         state.error = action.payload as string;
       })
-      
-      // Update Calendar Setting
-      .addCase(updateCalendarSetting.fulfilled, (state, action) => {
-        const index = state.calendars.findIndex(cal => cal.id === action.payload.id);
-        if (index !== -1) {
-          state.calendars[index] = {
-            ...state.calendars[index],
-            ...action.payload,
-          };
-        }
+      .addCase(getGoogleCalendarEvents.pending, (state) => {
+        state.isLoading = true;
+      })
+      .addCase(getGoogleCalendarEvents.fulfilled, (state, action: PayloadAction<GoogleEvent[]>) => {
+        state.events = action.payload;
+        state.isLoading = false;
+        state.error = null;
+      })
+      .addCase(getGoogleCalendarEvents.rejected, (state, action) => {
+        state.isLoading = false;
+        state.error = action.payload as string;
       });
   },
 });
 
-export const { resetState } = googleCalendarSlice.actions;
+export const { updateCalendarSetting, resetState } = googleCalendarSlice.actions;
 export default googleCalendarSlice.reducer;
+
+export {
+    toggleCalendarVisibility,
+    toggleCalendarConflictConsideration,
+    updateCalendarType,
+    getCalendarList,
+    getGoogleCalendarEvents,
+    initializeGoogleCalendar,
+    loginToGoogleCalendar,
+    resetState,
+  };

@@ -1,0 +1,16 @@
+{
+    "name": "next-step-app",
+    "version": "0.1.0",
+    "private": true,
+    "workspaces": [
+      "packages/*"
+    ],
+    "scripts": {
+      "server": "cd packages/server && npm run dev",
+      "web": "cd packages/web && npm start",
+      "mobile": "cd packages/mobile && npm start",
+      "build:server": "cd packages/server && npm run build",
+      "build:web": "cd packages/web && npm run build",
+      "build:common": "cd packages/common && npm run build"
+    }
+  }

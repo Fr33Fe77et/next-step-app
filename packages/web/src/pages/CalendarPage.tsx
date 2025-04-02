@@ -90,6 +90,8 @@ interface NextStepResource {
 interface ExternalResource {
   description?: string;
   location?: string;
+  backgroundColor?: string; // Add this field
+  calendarId?: string;
   source: 'external';
   type: 'meeting';
 }
@@ -137,6 +139,15 @@ const CalendarPage: React.FC = () => {
       dispatch(initializeGoogleCalendar());
     }
   }, [user, dispatch, navigate, isInitialized]);
+
+  // Add a second refresh after a short delay to ensure all calendars appear correctly
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      dispatch(getCalendarList());
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, []);
 
   // Fetch Google Calendar events when date changes or when signed in
   useEffect(() => {
