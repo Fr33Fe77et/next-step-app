@@ -8,11 +8,14 @@ import { getTasks } from '../store/taskSlice';
 import { 
   initializeGoogleCalendar, 
   loginToGoogleCalendar, 
-  getGoogleCalendarEvents 
+  getGoogleCalendarEvents,
+  getCalendarList,
+  loadCalendarSettings 
 } from '../store/googleCalendarSlice';
 import { useAppDispatch, useAppSelector } from '../hooks/reduxHooks';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 import Button from '../components/common/Button';
+import { RootState } from '../store';
 
 const CalendarContainer = styled.div`
   max-width: 1200px;
@@ -118,7 +121,7 @@ const CalendarPage: React.FC = () => {
     events: googleEvents, 
     calendars,
     isLoading: googleLoading 
-  } = useAppSelector((state) => state.googleCalendar);
+  } = useAppSelector((state: RootState) => state.googleCalendar);
 
   // State for view controls
   const [date, setDate] = useState(new Date());
@@ -140,49 +143,53 @@ const CalendarPage: React.FC = () => {
     }
   }, [user, dispatch, navigate, isInitialized]);
 
-  // Add a second refresh after a short delay to ensure all calendars appear correctly
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      dispatch(getCalendarList());
-    }, 500);
+ // Add a second refresh after a short delay to ensure all calendars appear correctly
+useEffect(() => {
+  const timer = setTimeout(() => {
+    dispatch(getCalendarList())
+      .then(() => {
+        // After loading calendars, load saved settings
+        dispatch(loadCalendarSettings());
+      });
+  }, 500);
 
-    return () => clearTimeout(timer);
-  }, []);
+  return () => clearTimeout(timer);
+}, [dispatch]);
 
-  // Fetch Google Calendar events when date changes or when signed in
-  useEffect(() => {
-    if (isInitialized && isSignedIn) {
-      // Get visible calendars
-      const visibleCalendarIds = calendars
-        .filter(cal => cal.visible)
-        .map(cal => cal.id);
-        
-      // Calculate date range based on the current view
-      let startDate: Date;
-      let endDate: Date;
+// Fetch Google Calendar events when date changes or when signed in
+useEffect(() => {
+  if (isInitialized && isSignedIn) {
+    // Get visible calendars
+    const visibleCalendarIds = calendars
+      .filter(cal => cal.visible)
+      .map(cal => cal.id);
       
-      switch (view) {
-        case 'month':
-          startDate = new Date(date.getFullYear(), date.getMonth(), 1);
-          endDate = new Date(date.getFullYear(), date.getMonth() + 1, 0);
-          break;
-        case 'week':
-          const weekStart = startOfWeek(date);
-          startDate = weekStart;
-          endDate = new Date(weekStart);
-          endDate.setDate(endDate.getDate() + 7);
-          break;
-        case 'day':
-          startDate = new Date(date);
-          endDate = new Date(date);
-          endDate.setHours(23, 59, 59);
-          break;
-        default:
-          startDate = new Date(date.getFullYear(), date.getMonth(), 1);
-          endDate = addMonths(startDate, 1);
-      }
-      
-      dispatch(getGoogleCalendarEvents({ startDate, endDate, calendarIds: visibleCalendarIds }));
+    // Calculate date range based on the current view
+    let startDate: Date;
+    let endDate: Date;
+    
+    switch (view) {
+      case 'month':
+        startDate = new Date(date.getFullYear(), date.getMonth(), 1);
+        endDate = new Date(date.getFullYear(), date.getMonth() + 1, 0);
+        break;
+      case 'week':
+        const weekStart = startOfWeek(date);
+        startDate = weekStart;
+        endDate = new Date(weekStart);
+        endDate.setDate(endDate.getDate() + 7);
+        break;
+      case 'day':
+        startDate = new Date(date);
+        endDate = new Date(date);
+        endDate.setHours(23, 59, 59);
+        break;
+      default:
+        startDate = new Date(date.getFullYear(), date.getMonth(), 1);
+        endDate = addMonths(startDate, 1);
+    }
+    
+    dispatch(getGoogleCalendarEvents({ startDate, endDate, calendarIds: visibleCalendarIds }));
   }
 }, [date, view, isInitialized, isSignedIn, calendars, dispatch]);
 

@@ -1,10 +1,13 @@
 import React, { useEffect } from 'react';
-import { useDispatch, useSelector } from 'react-redux';
+import { useAppDispatch, useAppSelector } from '../hooks/reduxHooks';
 import {
   getCalendarList,
   toggleCalendarVisibility,
   toggleCalendarConflictConsideration,
   updateCalendarType,
+  CalendarSetting,
+  saveCalendarSettings,
+  loadCalendarSettings
 } from '../store/googleCalendarSlice';
 import { RootState } from '../store';
 
@@ -20,25 +23,54 @@ const calendarTypeOptions = [
 ];
 
 const CalendarSettingsPage = () => {
-  const dispatch = useDispatch();
-  const { calendars, isLoading } = useSelector(
-    (state: RootState) => state.googleCalendar
-  );
+  const dispatch = useAppDispatch();
+  const { calendars, isLoading } = useAppSelector(
+  (state: RootState) => state.googleCalendar
+);
 
-  useEffect(() => {
-    dispatch(getCalendarList());
-  }, [dispatch]);
+useEffect(() => {
+  dispatch(getCalendarList())
+    .then(() => {
+      dispatch(loadCalendarSettings());
+    });
+}, [dispatch]);
 
   const handleToggleVisible = (id: string) => {
     dispatch(toggleCalendarVisibility(id));
-  };
+  // Get the updated calendar and save it
+  const calendar = calendars.find(cal => cal.id === id);
+  if (calendar) {
+    const updatedCalendar = {
+      ...calendar,
+      visible: !calendar.visible
+    };
+    dispatch(saveCalendarSettings(updatedCalendar));
+  }
+};
 
   const handleToggleConflict = (id: string) => {
     dispatch(toggleCalendarConflictConsideration(id));
+    const calendar = calendars.find(cal => cal.id === id);
+    if (calendar) {
+      const updatedCalendar = {
+        ...calendar,
+        considerInConflicts: !calendar.considerInConflicts
+      };
+      dispatch(saveCalendarSettings(updatedCalendar));
+    }
   };
 
   const handleTypeChange = (id: string, newType: string) => {
-    dispatch(updateCalendarType(id, newType))
+    // Cast the newType to the expected type
+    dispatch(updateCalendarType(id, newType as CalendarSetting['calendarType']));
+    const calendar = calendars.find(cal => cal.id === id);
+    if (calendar) {
+      const updatedCalendar = {
+        ...calendar,
+        calendarType: newType as CalendarSetting['calendarType']
+      };
+      dispatch(saveCalendarSettings(updatedCalendar));
+    }
   };
 
   if (isLoading) return <p>Loading...</p>;
