@@ -87,12 +87,16 @@ export const fetchGoogleCalendarEvents = async (
   calendarIds?: string[]
 ): Promise<GoogleEvent[]> => {
   try {
+    // Inside the function, convert to ISO strings when needed
+    const timeMinStr = timeMin.toISOString();
+    const timeMaxStr = timeMax.toISOString();
+    
+    // If no calendars specified, just fetch from primary
     if (!calendarIds || calendarIds.length === 0) {
-      // If no calendars specified, just fetch from primary
       const response = await gapi.client.calendar.events.list({
         'calendarId': 'primary',
-        'timeMin': timeMin.toISOString(),
-        'timeMax': timeMax.toISOString(),
+        'timeMin': timeMinStr,
+        'timeMax': timeMaxStr,
         'showDeleted': false,
         'singleEvents': true,
         'orderBy': 'startTime'
@@ -114,8 +118,8 @@ export const fetchGoogleCalendarEvents = async (
         
         const response = await gapi.client.calendar.events.list({
           'calendarId': calendarId,
-          'timeMin': timeMin.toISOString(),
-          'timeMax': timeMax.toISOString(),
+          'timeMin': timeMinStr,
+          'timeMax': timeMaxStr,
           'showDeleted': false,
           'singleEvents': true,
           'orderBy': 'startTime'

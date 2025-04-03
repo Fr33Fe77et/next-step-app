@@ -12,7 +12,11 @@ interface ButtonProps {
   style?: React.CSSProperties;
 }
 
-const StyledButton = styled.button<ButtonProps>`
+const StyledButton = styled.button<{
+  $primary?: boolean;
+  $danger?: boolean;
+  $fullWidth?: boolean;
+}>`
   padding: 0.5rem 1rem;
   border-radius: 4px;
   font-weight: 600;
@@ -20,13 +24,13 @@ const StyledButton = styled.button<ButtonProps>`
   transition: all 0.2s;
   
   /* Primary or default styles */
-  background-color: ${(props) => (props.primary ? '#4A6FA5' : '#ffffff')};
-  color: ${(props) => (props.primary ? '#ffffff' : '#4A6FA5')};
-  border: 1px solid ${(props) => (props.primary ? '#4A6FA5' : '#d0d8e2')};
+  background-color: ${(props) => (props.$primary ? '#4A6FA5' : '#ffffff')};
+  color: ${(props) => (props.$primary ? '#ffffff' : '#4A6FA5')};
+  border: 1px solid ${(props) => (props.$primary ? '#4A6FA5' : '#d0d8e2')};
   
   /* Danger style */
   ${(props) =>
-    props.danger &&
+    props.$danger &&
     `
     background-color: #dc3545;
     color: #ffffff;
@@ -34,7 +38,7 @@ const StyledButton = styled.button<ButtonProps>`
   `}
   
   /* Full width */
-  width: ${(props) => (props.fullWidth ? '100%' : 'auto')};
+  width: ${(props) => (props.$fullWidth ? '100%' : 'auto')};
   
   /* Disabled state */
   opacity: ${(props) => (props.disabled ? 0.6 : 1)};
@@ -57,9 +61,9 @@ const Button: React.FC<ButtonProps> = ({
 }) => {
   return (
     <StyledButton
-      primary={primary}
-      danger={danger}
-      fullWidth={fullWidth}
+      $primary={primary}
+      $danger={danger}
+      $fullWidth={fullWidth}
       type={type}
       disabled={disabled}
       onClick={onClick}

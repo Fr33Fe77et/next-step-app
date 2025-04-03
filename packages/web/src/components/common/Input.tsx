@@ -25,9 +25,10 @@ const InputLabel = styled.label`
   font-weight: 600;
 `;
 
-const StyledInput = styled.input<{ hasError?: boolean }>`
+// Update the styled input with $ prefix
+const StyledInput = styled.input<{ $hasError?: boolean }>`
   padding: 0.5rem;
-  border: 1px solid ${(props) => (props.hasError ? '#dc3545' : '#d0d8e2')};
+  border: 1px solid ${(props) => (props.$hasError ? '#dc3545' : '#d0d8e2')};
   border-radius: 4px;
   font-size: 1rem;
   
@@ -72,7 +73,7 @@ const Input: React.FC<InputProps> = ({
         name={name}
         required={required}
         disabled={disabled}
-        hasError={!!error}
+        $hasError={!!error}
       />
       {error && <ErrorMessage>{error}</ErrorMessage>}
     </InputContainer>

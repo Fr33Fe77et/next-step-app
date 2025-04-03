@@ -95,7 +95,15 @@ export const getGoogleCalendarEvents = createAsyncThunk(
         // Create default dates if not provided
         const now = new Date();
         const startDate = params.startDate || now;
-        const endDate = params.endDate || new Date(now.getFullYear(), now.getMonth() + 1, 0); // Default to end of current month
+        
+        // Default to end of current month if no end date provided
+        let endDate;
+        if (params.endDate) {
+          endDate = params.endDate;
+        } else {
+          // Create a date for the last day of the current month
+          endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+        }
         
         const events = await fetchGoogleCalendarEvents(
           startDate,

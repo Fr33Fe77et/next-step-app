@@ -94,21 +94,6 @@ export const fetchEmails = async (maxResults: number = 20): Promise<EmailMessage
     try {
       console.log("Starting to fetch emails, max:", maxResults);
       
-      // Check if Gmail API is available
-      if (!gapi.client.gmail) {
-        console.error("Gmail API not loaded");
-        await initGmailApi();
-      }
-      const response = await gapi.client.gmail.users.messages.list({
-        userId: 'me',
-        maxResults,
-        q: 'in:inbox',
-      });
-
-      console.log("Gmail list response:", response);
-      const messages = response.result.messages || [];
-      console.log(`Found ${messages.length} messages`);
-      
       // Check if user is authenticated
       const isSignedIn = gapi.auth2.getAuthInstance().isSignedIn.get();
       console.log("User is signed in:", isSignedIn);
@@ -116,29 +101,48 @@ export const fetchEmails = async (maxResults: number = 20): Promise<EmailMessage
       if (!isSignedIn) {
         console.log("User not signed in, attempting sign in");
         await signInToGmail();
+        
+        // Check if we have the Gmail scope
+        const currentUser = gapi.auth2.getAuthInstance().currentUser.get();
+        const hasGmailScope = currentUser.hasGrantedScopes(SCOPES);
+        
+        if (!hasGmailScope) {
+          console.log("Need to request Gmail scope");
+          await currentUser.grant({ scope: SCOPES });
+        }
+      }
+      
+      // Check if Gmail API is available
+      if (!gapi.client.gmail) {
+        console.log("Gmail API not loaded, loading now");
+        await gapi.client.load('gmail', 'v1');
       }
       
       console.log("Calling Gmail API to list messages");
-        const responseList = await gapi.client.gmail.users.messages.list({
+      const response = await gapi.client.gmail.users.messages.list({
         userId: 'me',
         maxResults,
         q: 'in:inbox',
       });
       
-      console.log("API response received:", responseList.status);
-      console.log("Result:", responseList.result);
+      console.log("API response received:", response.status);
+      console.log("Result:", response.result);
       
-      if (!response.resultList.messages || responseList.result.messages.length === 0) {
+      if (!response.result.messages || response.result.messages.length === 0) {
         console.log("No messages found in the response");
         return [];
       }
       
-      const messagesLen = response.result.messages;
-      console.log(`Found ${messagesLen.length} messages, fetching details`);
+      const messages = response.result.messages;
+      console.log(`Found ${messages.length} messages, fetching details`);
+      
+      // For debugging, limit to just a few emails at first
+      const messagesToProcess = messages.slice(0, 5);
+      console.log(`Processing ${messagesToProcess.length} messages`);
       
       const emails: EmailMessage[] = [];
       
-      for (const message of messages) {
+      for (const message of messagesToProcess) {
         console.log(`Fetching details for message ${message.id}`);
         try {
           const emailData = await fetchEmailData(message.id);
@@ -153,7 +157,7 @@ export const fetchEmails = async (maxResults: number = 20): Promise<EmailMessage
         }
       }
       
-      console.log(`Successfully processed ${emails.length} out of ${messages.length} emails`);
+      console.log(`Successfully processed ${emails.length} out of ${messagesToProcess.length} emails`);
       return emails;
     } catch (error) {
       console.error("Error in fetchEmails:", error);
