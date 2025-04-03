@@ -70,8 +70,23 @@ export const login = createAsyncThunk(
 );
 
 // Logout user
-export const logout = createAsyncThunk('auth/logout', async () => {
+export const logout = createAsyncThunk('auth/logout', async (_, { dispatch }) => {
+  // Clear localStorage tokens
   localStorage.removeItem('user');
+  
+  // Also clear Google tokens if available
+  if (window.gapi && window.gapi.auth2) {
+    try {
+      const auth2 = window.gapi.auth2.getAuthInstance();
+      if (auth2) await auth2.signOut();
+    } catch (error) {
+      console.error('Error signing out of Google:', error);
+    }
+  }
+  
+  // Clear any other service tokens
+  localStorage.removeItem('googleAuth');
+  localStorage.removeItem('calendarSettings');
 });
 
 export const authSlice = createSlice({

@@ -13,6 +13,7 @@ import TasksPage from './pages/TasksPage';
 import TaskFormPage from './pages/TaskFormPage';
 import CalendarPage from './pages/CalendarPage';
 import CalendarSettingsPage from './pages/CalendarSettingsPage';
+import EmailPage from './pages/EmailPage';
 import './App.css';
 
 function App() {
@@ -32,6 +33,7 @@ function App() {
               <Route path="/tasks/:id" element={<TaskFormPage />} />
               <Route path="/calendar" element={<CalendarPage />} />
               <Route path="/calendar/settings" element={<CalendarSettingsPage />} />
+              <Route path="/email" element={<EmailPage />} />
             </Routes>
           </main>
           <ToastContainer />

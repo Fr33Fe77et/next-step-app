@@ -2,9 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Calendar, dateFnsLocalizer, View } from 'react-big-calendar';
 import { format, parse, startOfWeek, getDay, addMonths } from 'date-fns';
-import enUS from 'date-fns/locale/en-US';
+import { enUS } from 'date-fns/locale/en-US';
 import styled from 'styled-components';
-import { getTasks } from '../store/taskSlice';
 import { 
   initializeGoogleCalendar, 
   loginToGoogleCalendar, 
@@ -16,6 +15,8 @@ import { useAppDispatch, useAppSelector } from '../hooks/reduxHooks';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 import Button from '../components/common/Button';
 import { RootState } from '../store';
+import { reinitializeGoogleCalendar,
+         toggleCalendarVisibility, } from '../store/googleCalendarSlice';
 
 const CalendarContainer = styled.div`
   max-width: 1200px;
@@ -134,28 +135,78 @@ const CalendarPage: React.FC = () => {
       navigate('/login');
       return;
     }
-
-    dispatch(getTasks());
-
+  
     // Initialize Google Calendar API if not already done
     if (!isInitialized) {
-      dispatch(initializeGoogleCalendar());
+      dispatch(initializeGoogleCalendar())
+        .then(() => {
+          // After initialization, try to login
+          return dispatch(loginToGoogleCalendar());
+        })
+        .then(() => {
+          // After login, fetch calendars and settings
+          return dispatch(getCalendarList());
+        })
+        .then(() => {
+          // After getting calendars, load saved settings
+          return dispatch(loadCalendarSettings())
+            .catch(err => {
+              console.log('Failed to load calendar settings, using defaults');
+              // Set default visibility for primary calendar
+              if (calendars.length > 0) {
+                const primaryCalendar = calendars.find(calendar => calendar.primary);
+                if (primaryCalendar && !primaryCalendar.visible) {
+                  // Use the existing toggle function
+                  dispatch(toggleCalendarVisibility(primaryCalendar.id));
+                }
+              }
+            });
+        })
+        .catch(error => {
+          console.error('Error initializing calendar', error);
+        });
+    } else if (isSignedIn) {
+      // If already initialized and signed in, just get calendars and settings
+      dispatch(getCalendarList())
+        .then(() => {
+          return dispatch(loadCalendarSettings())
+            .catch(err => {
+              console.log('Failed to load calendar settings, using defaults');
+              // Set default visibility for primary calendar
+              if (calendars.length > 0) {
+                const primaryCalendar = calendars.find(calendar => calendar.primary);
+                if (primaryCalendar && !primaryCalendar.visible) {
+                  // Use the existing toggle function
+                  dispatch(toggleCalendarVisibility(primaryCalendar.id));
+                }
+              }
+            });
+        });
     }
-  }, [user, dispatch, navigate, isInitialized]);
+  // No need for the delayed refresh in a separate useEffect
+  // Only create the timeout if needed
+  let timer: NodeJS.Timeout | null = null;
+  
+  if (isInitialized && isSignedIn && calendars.length === 0) {
+    timer = setTimeout(() => {
+      dispatch(getCalendarList())
+        .then(() => {
+          return dispatch(loadCalendarSettings())
+            .catch(err => {
+              console.log('Failed to load calendar settings, using defaults');
+              // Set default visibility code would go here, but will likely
+              // not be needed since calendars.length === 0 in this condition
+            });
+        });
+    }, 500);
+  }
 
- // Add a second refresh after a short delay to ensure all calendars appear correctly
-useEffect(() => {
-  const timer = setTimeout(() => {
-    dispatch(getCalendarList())
-      .then(() => {
-        // After loading calendars, load saved settings
-        dispatch(loadCalendarSettings());
-      });
-  }, 500);
-
-  return () => clearTimeout(timer);
-}, [dispatch]);
-
+  // Cleanup function to clear the timeout if component unmounts
+  return () => {
+    if (timer) clearTimeout(timer);
+  };
+}, [user, dispatch, navigate, isInitialized, isSignedIn, calendars]);
+ 
 // Fetch Google Calendar events when date changes or when signed in
 useEffect(() => {
   if (isInitialized && isSignedIn) {
@@ -290,12 +341,15 @@ useEffect(() => {
           <Button onClick={() => navigate('/calendar/settings')} style={{ marginRight: '1rem' }}>
             Calendar Settings
           </Button>
+          <Button onClick={() => dispatch(reinitializeGoogleCalendar())} style={{ marginRight: '1rem' }}>
+            Reset Calendar Connection
+          </Button>
           <Button primary onClick={() => navigate('/tasks/new')}>
             Create New Task
           </Button>
         </div>
       </CalendarHeader>
-
+  
       <FilterContainer>
         <FilterButton
           active={sourceFilter === 'all'}
@@ -316,7 +370,7 @@ useEffect(() => {
           External Only
         </FilterButton>
       </FilterContainer>
-
+  
       <FilterContainer>
         <FilterButton
           active={typeFilter === 'all'}
@@ -337,47 +391,66 @@ useEffect(() => {
           Meetings
         </FilterButton>
       </FilterContainer>
-
-      <StyledCalendar>
-        <Calendar
-          localizer={localizer}
-          events={filteredEvents}
-          startAccessor="start"
-          endAccessor="end"
-          onSelectEvent={handleEventClick}
-          style={{ height: 650 }}
-          date={date}
-          onNavigate={setDate}
-          view={view}
-          onView={(newView: View) => setView(newView)}
-          views={['month', 'week', 'day', 'agenda']}
-          eventPropGetter={(event) => {
-            // Color based on source and priority
-            let backgroundColor = '#4a6fa5'; // Default blue
-            
-            if (event.resource.source === 'nextStep') {
-              const resource = event.resource as NextStepResource;
-              backgroundColor = 
-                resource.priority === 'high' ? '#ef4444' :
-                resource.priority === 'medium' ? '#f59e0b' :
-                '#3b82f6';
-            } else if (event.resource.source === 'external') {
-              // Use the calendar color if available
-              const resource = event.resource as ExternalResource;
-              backgroundColor = resource.backgroundColor || '#10b981'; // Fall back to green
-            }
-            
-            return {
-              style: {
-                backgroundColor,
-                borderRadius: '4px',
+  
+      {(tasksLoading || googleLoading) ? (
+        <StyledCalendar style={{ position: 'relative' }}>
+          <div style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(255, 255, 255, 0.7)',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            zIndex: 5,
+            borderRadius: '8px'
+          }}>
+            <p>Loading calendar data...</p>
+          </div>
+        </StyledCalendar>
+      ) : (
+        <StyledCalendar>
+          <Calendar
+            localizer={localizer}
+            events={filteredEvents}
+            startAccessor="start"
+            endAccessor="end"
+            onSelectEvent={handleEventClick}
+            style={{ height: 650 }}
+            date={date}
+            onNavigate={setDate}
+            view={view}
+            onView={(newView: View) => setView(newView)}
+            views={['month', 'week', 'day', 'agenda']}
+            eventPropGetter={(event) => {
+              // Color based on source and priority
+              let backgroundColor = '#4a6fa5'; // Default blue
+              
+              if (event.resource.source === 'nextStep') {
+                const resource = event.resource as NextStepResource;
+                backgroundColor = 
+                  resource.priority === 'high' ? '#ef4444' :
+                  resource.priority === 'medium' ? '#f59e0b' :
+                  '#3b82f6';
+              } else if (event.resource.source === 'external') {
+                // Use the calendar color if available
+                const resource = event.resource as ExternalResource;
+                backgroundColor = resource.backgroundColor || '#10b981'; // Fall back to green
               }
-            };
-          }}
-        />
-      </StyledCalendar>
+              
+              return {
+                style: {
+                  backgroundColor,
+                  borderRadius: '4px',
+                }
+              };
+            }}
+          />
+        </StyledCalendar>
+      )}
     </CalendarContainer>
   );
-};
-
+}
 export default CalendarPage;

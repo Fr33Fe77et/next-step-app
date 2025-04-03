@@ -192,6 +192,22 @@ export const getGoogleCalendarEvents = createAsyncThunk(
     }
   );
 
+  export const reinitializeGoogleCalendar = createAsyncThunk(
+    'googleCalendar/reinitialize',
+    async (_, { rejectWithValue }) => {
+      try {
+        // Use the existing functions, don't define new ones
+        const calendarService = await import('../services/googleCalendarService');
+        calendarService.clearGoogleAuth();
+        await calendarService.initGoogleCalendarApi();
+        await calendarService.signInToGoogle();
+        return true;
+      } catch (error) {
+        return rejectWithValue('Failed to reinitialize Google Calendar API');
+      }
+    }
+  );
+
 export const toggleCalendarVisibility =
   (id: string) => (dispatch: AppDispatch, getState: () => RootState) => {
     const calendar = getState().googleCalendar.calendars.find((c) => c.id === id);

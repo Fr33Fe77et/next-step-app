@@ -4,6 +4,7 @@ import styled from 'styled-components';
 import { createTask, updateTask, getTasks } from '../store/taskSlice';
 import { useAppDispatch, useAppSelector } from '../hooks/reduxHooks';
 import Button from '../components/common/Button';
+import { useLocation } from 'react-router-dom';
 
 const FormContainer = styled.div`
   max-width: 800px;
@@ -103,10 +104,18 @@ const TaskFormPage: React.FC = () => {
   
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
-  
+  const location = useLocation();
+
   const { user } = useAppSelector((state) => state.auth);
   const { tasks, isLoading } = useAppSelector((state) => state.tasks);
   
+  const emailData = location.state as {
+    fromEmail?: boolean;
+    emailSubject?: string;
+    emailBody?: string;
+    emailId?: string;
+  } | null;
+
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -194,7 +203,18 @@ const TaskFormPage: React.FC = () => {
         navigate('/tasks');
       }
     }
-  }, [user, navigate, isEditing, id, tasks, dispatch]);
+    // If navigated from email, pre-populate form with email data
+    if (emailData?.fromEmail) {
+      setFormData((prev) => ({
+        ...prev,
+        title: emailData.emailSubject || prev.title,
+        description: `Email content:\n\n${emailData.emailBody || ''}`,
+        // You can add additional default values for email-based tasks
+        priority: 'medium',
+        status: 'pending',
+      }));
+    }
+  }, [user, navigate, isEditing, id, tasks, dispatch, emailData]);
   
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;

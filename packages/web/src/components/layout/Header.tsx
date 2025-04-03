@@ -29,11 +29,15 @@ const NavContainer = styled.nav`
 const NavLink = styled(Link)`
   color: white;
   text-decoration: none;
-  margin-left: 1.5rem;
+  margin-right: 1.5rem; // Change margin-left to margin-right
   
   &:hover {
     text-decoration: underline;
   }
+`;
+
+const LogoutButton = styled(Button)`
+  margin-left: 1.5rem; // Add some margin to the left of the button
 `;
 
 const Header: React.FC = () => {
@@ -55,7 +59,8 @@ const Header: React.FC = () => {
             <NavLink to="/dashboard">Dashboard</NavLink>
             <NavLink to="/tasks">Tasks</NavLink>
             <NavLink to="/calendar">Calendar</NavLink>
-            <Button onClick={onLogout}>Logout</Button>
+            <NavLink to="/email">Email</NavLink>
+            <LogoutButton onClick={onLogout}>Logout</LogoutButton>
           </>
         ) : (
           <>

@@ -139,6 +139,27 @@ export const fetchGoogleCalendarEvents = async (
   }
 };
 
+export const reinitializeGoogleApis = async () => {
+  clearGoogleAuth();
+  await initGoogleCalendarApi(); // or initGmailApi()
+  return signInToGoogle(); // or signInToGmail()
+};
+
+export const clearGoogleAuth = () => {
+  // Clear any stored tokens
+  localStorage.removeItem('googleAuth');
+  
+  // If gapi is loaded, clear its auth state too
+  if (window.gapi && window.gapi.auth2) {
+    const auth2 = window.gapi.auth2.getAuthInstance();
+    if (auth2) {
+      auth2.signOut().then(() => {
+        console.log('User signed out.');
+      });
+    }
+  }
+};
+
 // Helper function to format events consistently
 const formatGoogleEvents = (events: any[], calendarInfo?: {id: string, backgroundColor?: string}): GoogleEvent[] => {
   return events.map((event: any) => {
@@ -161,4 +182,10 @@ const formatGoogleEvents = (events: any[], calendarInfo?: {id: string, backgroun
       backgroundColor: calendarInfo?.backgroundColor
     };
   });
+};
+
+export const reinitializeGoogleCalendarApi = async (): Promise<void> => {
+  clearGoogleAuth();
+  await initGoogleCalendarApi();
+  return signInToGoogle();
 };
