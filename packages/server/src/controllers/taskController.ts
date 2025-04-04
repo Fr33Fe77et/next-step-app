@@ -188,7 +188,9 @@ export const deleteTask = async (req: Request, res: Response) => {
 // @desc    Get next task recommendation
 // @route   GET /api/tasks/next
 // @access  Private
+
 export const getNextTask = async (req: Request, res: Response) => {
+  console.log('getNextTask controller called with user:', req.user?.id);
   try {
     // Simple rule-based implementation for MVP
     const today = new Date();

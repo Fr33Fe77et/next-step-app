@@ -53,113 +53,189 @@ export interface EmailMessage {
 }
 
 export const initGmailApi = (): Promise<void> => {
-  return new Promise((resolve, reject) => {
-    gapi.load('client:auth2', () => {
-      gapi.client
-        .init({
-          apiKey: API_KEY,
-          clientId: CLIENT_ID,
-          discoveryDocs: DISCOVERY_DOCS,
-          scope: SCOPES,
-        })
-        .then(() => {
+    return new Promise((resolve, reject) => {
+      // First check if gapi is available
+      if (!window.gapi) {
+        reject(new Error('Google API not loaded'));
+        return;
+      }
+  
+      // Load the auth2 library
+      window.gapi.load('client:auth2', async () => {
+        try {
+          console.log('Initializing Google API client...');
+          await window.gapi.client.init({
+            apiKey: API_KEY,
+            clientId: CLIENT_ID,
+            discoveryDocs: DISCOVERY_DOCS,
+            scope: SCOPES,
+          });
+          
+          console.log('Google API client initialized');
           resolve();
-        })
-        .catch((error: Error) => {
+        } catch (error) {
+          console.error('Error initializing Google API client:', error);
           reject(error);
-        });
+        }
+      });
     });
-  });
-};
+  };
 
-export const signInToGmail = (): Promise<void> => {
-  return new Promise((resolve, reject) => {
-    const auth = gapi.auth2.getAuthInstance();
-    
-    if (auth.isSignedIn.get()) {
-      resolve();
-    } else {
-      auth.signIn()
-        .then(() => {
-          resolve();
-        })
-        .catch((error: Error) => {
-          reject(error);
-        });
+  export const signInToGmail = async (): Promise<void> => {
+    try {
+      // Verify gapi and auth2 are available
+      if (!window.gapi || !window.gapi.auth2) {
+        console.log('Auth2 not initialized, initializing first...');
+        await initGmailApi();
+      }
+      
+      const authInstance = window.gapi.auth2.getAuthInstance() as GoogleAuth2Instance;
+      if (!authInstance) {
+        throw new Error('Auth instance not available after initialization');
+      }
+      
+      if (!authInstance.isSignedIn.get()) {
+        console.log('Attempting to sign in user...');
+        await authInstance.signIn();
+        console.log('User signed in successfully');
+      } else {
+        console.log('User already signed in');
+      }
+    } catch (error) {
+      console.error('Error signing in to Gmail:', error);
+      throw error;
     }
-  });
-};
+  };
 
-export const fetchEmails = async (maxResults: number = 20): Promise<EmailMessage[]> => {
+  export const fetchEmails = async (maxResults: number = 20): Promise<EmailMessage[]> => {
     try {
       console.log("Starting to fetch emails, max:", maxResults);
       
-      // Check if user is authenticated
-      const isSignedIn = gapi.auth2.getAuthInstance().isSignedIn.get();
+      // Ensure API is initialized before continuing
+      try {
+        console.log("Ensuring Google API is initialized");
+        await initGmailApi();
+      } catch (initError) {
+        console.error("Failed to initialize Google API:", initError);
+        throw new Error("Google API initialization failed");
+      }
+      
+      // Now we should have a valid auth instance
+      const authInstance = window.gapi.auth2.getAuthInstance() as GoogleAuth2Instance;
+      if (!authInstance) {
+        throw new Error("Auth instance still not available");
+      }
+      
+      const isSignedIn = authInstance.isSignedIn.get();
       console.log("User is signed in:", isSignedIn);
       
       if (!isSignedIn) {
         console.log("User not signed in, attempting sign in");
         await signInToGmail();
+      }
+      
+      // Re-check auth status after sign-in attempt
+      const currentAuthInstance = gapi.auth2?.getAuthInstance();
+      if (!currentAuthInstance) {
+        throw new Error("Auth instance is still null after sign-in attempt");
+      }
+      
+      if (!currentAuthInstance.isSignedIn.get()) {
+        throw new Error("Failed to sign in to Google account");
+      }
+      
+      // More detailed authentication logging
+      const currentUser = currentAuthInstance.currentUser.get();
+      if (!currentUser) {
+        throw new Error("Current user is null after authentication");
+      }
+      
+      const authResponse = currentUser.getAuthResponse();
+      console.log("Token expiry timestamp:", authResponse.expires_at);
+      console.log("Current time:", Date.now());
+      console.log("Token valid for (minutes):", (authResponse.expires_at - Date.now())/60000);
         
-        // Check if we have the Gmail scope
-        const currentUser = gapi.auth2.getAuthInstance().currentUser.get();
-        const hasGmailScope = currentUser.hasGrantedScopes(SCOPES);
-        
-        if (!hasGmailScope) {
-          console.log("Need to request Gmail scope");
+      // Check scopes
+      const grantedScopes = currentUser.getGrantedScopes();
+      console.log("Granted scopes:", grantedScopes);
+      console.log("Gmail scope requested:", SCOPES);
+      console.log("Has required scope:", grantedScopes.includes(SCOPES));
+      
+      // Request Gmail scope if not already granted
+      if (!currentUser.hasGrantedScopes(SCOPES)) {
+        console.log("Need to request Gmail scope");
+        try {
           await currentUser.grant({ scope: SCOPES });
+        } catch (scopeError: unknown) {
+          console.error("Failed to grant Gmail scope:", scopeError);
+          throw new Error("Failed to obtain Gmail access permission");
         }
       }
+  
+      // Check if token is included in the request
+      console.log("Auth header will be included:", !!gapi.client.getToken());
       
       // Check if Gmail API is available
       if (!gapi.client.gmail) {
         console.log("Gmail API not loaded, loading now");
-        await gapi.client.load('gmail', 'v1');
-      }
-      
-      console.log("Calling Gmail API to list messages");
-      const response = await gapi.client.gmail.users.messages.list({
-        userId: 'me',
-        maxResults,
-        q: 'in:inbox',
-      });
-      
-      console.log("API response received:", response.status);
-      console.log("Result:", response.result);
-      
-      if (!response.result.messages || response.result.messages.length === 0) {
-        console.log("No messages found in the response");
-        return [];
-      }
-      
-      const messages = response.result.messages;
-      console.log(`Found ${messages.length} messages, fetching details`);
-      
-      // For debugging, limit to just a few emails at first
-      const messagesToProcess = messages.slice(0, 5);
-      console.log(`Processing ${messagesToProcess.length} messages`);
-      
-      const emails: EmailMessage[] = [];
-      
-      for (const message of messagesToProcess) {
-        console.log(`Fetching details for message ${message.id}`);
         try {
-          const emailData = await fetchEmailData(message.id);
-          if (emailData) {
-            emails.push(emailData);
-            console.log(`Successfully processed email: ${emailData.subject}`);
-          } else {
-            console.log(`Failed to process email ${message.id}`);
-          }
-        } catch (detailError) {
-          console.error(`Error fetching details for message ${message.id}:`, detailError);
+          await gapi.client.load('gmail', 'v1');
+        } catch (loadError: unknown) {
+          console.error("Failed to load Gmail API:", loadError);
+          throw new Error("Failed to load Gmail API");
         }
       }
       
-      console.log(`Successfully processed ${emails.length} out of ${messagesToProcess.length} emails`);
-      return emails;
-    } catch (error) {
+      try {
+        console.log("Calling Gmail API to list messages");
+        const response = await gapi.client.gmail.users.messages.list({
+          userId: 'me',
+          maxResults,
+          q: 'in:inbox',
+        });
+        
+        console.log("API response received:", response.status);
+        console.log("Result:", response.result);
+        
+        if (!response.result.messages || response.result.messages.length === 0) {
+          console.log("No messages found in the response");
+          return [];
+        }
+        
+        const messages = response.result.messages;
+        console.log(`Found ${messages.length} messages, fetching details`);
+        
+        // For debugging, limit to just a few emails at first
+        const messagesToProcess = messages.slice(0, 5);
+        console.log(`Processing ${messagesToProcess.length} messages`);
+        
+        const emails: EmailMessage[] = [];
+        
+        for (const message of messagesToProcess) {
+          console.log(`Fetching details for message ${message.id}`);
+          try {
+            const emailData = await fetchEmailData(message.id);
+            if (emailData) {
+              emails.push(emailData);
+              console.log(`Successfully processed email: ${emailData.subject}`);
+            } else {
+              console.log(`Failed to process email ${message.id}`);
+            }
+          } catch (detailError) {
+            console.error(`Error fetching details for message ${message.id}:`, detailError);
+          }
+        }
+        
+        console.log(`Successfully processed ${emails.length} out of ${messagesToProcess.length} emails`);
+        return emails;
+      } catch (error: unknown) {
+        console.error("Gmail API request failed:", error);
+        if (error && typeof error === 'object' && 'result' in error && error.result) {
+          console.error("Error details:", (error as any).result.error);
+        }
+        throw error;
+      }
+    } catch (error: unknown) {
       console.error("Error in fetchEmails:", error);
       throw error;
     }
@@ -206,6 +282,27 @@ export const fetchEmailData = async (messageId: string): Promise<EmailMessage | 
     return null;
   }
 };
+
+// Define the Auth2 instance type to match Google's API
+interface GoogleAuth2Instance {
+    isSignedIn: {
+      get(): boolean;
+      listen(listener: (signedIn: boolean) => void): void;
+    };
+    currentUser: {
+      get(): GoogleUser;
+    };
+    signIn(options?: object): Promise<GoogleUser>;
+    signOut(): Promise<void>;
+  }
+  
+  interface GoogleUser {
+    getBasicProfile(): any;
+    getGrantedScopes(): string;
+    getAuthResponse(includeAuthorizationData?: boolean): any;
+    grant(options: {scope: string}): Promise<any>;
+    hasGrantedScopes(scopes: string): boolean;
+  }
 
 export const reinitializeGoogleApis = async () => {
     clearGoogleAuth();
@@ -292,3 +389,20 @@ export const reinitializeGmailApi = async (): Promise<void> => {
     await initGmailApi();
     return signInToGmail();
 };
+
+interface GapiResponse {
+    result: any;
+    body: string;
+    headers?: any;
+    status?: number;
+  }
+  
+function testGmailAccess() {
+gapi.client.gmail.users.getProfile({userId: 'me'})
+    .then((response: GapiResponse) => {
+    console.log('Gmail profile access successful:', response);
+    })
+    .catch((error: Error) => {
+    console.error('Gmail profile access failed:', error);
+    });
+}

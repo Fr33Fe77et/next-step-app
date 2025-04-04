@@ -17,6 +17,11 @@ connectDB();
 // Create Express app
 const app = express();
 
+app.use((req, res, next) => {
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+  next();
+});
+
 // Middleware
 app.use(cors({
   origin: 'http://localhost:3000', // Frontend URL
@@ -25,6 +30,11 @@ app.use(cors({
 app.use(helmet());
 app.use(morgan('dev'));
 app.use(express.json());
+
+app.use((req, res, next) => {
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+  next();
+});
 
 // Routes
 app.get('/', (req: Request, res: Response) => {
