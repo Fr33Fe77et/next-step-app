@@ -119,6 +119,30 @@ const ActionBar = styled.div`
   margin-top: 1rem;
 `;
 
+const getCleanTextFromHtml = (html: string | undefined): string => {
+    if (!html) return '';
+    
+    // Create a temporary DOM element
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = html;
+    
+    // Get text content (this removes all HTML)
+    let text = tempDiv.textContent || tempDiv.innerText || '';
+    
+    // Trim and limit length
+    text = text.trim();
+    if (text.length > 300) {
+      text = text.substring(0, 297) + '...';
+    }
+    
+    return text;
+  };
+
+  const renderEmailContent = (content: string | undefined) => {
+    if (!content) return null; // Return null if content is undefined
+    return <div dangerouslySetInnerHTML={{ __html: content }} />;
+  };
+
 const EmailPage: React.FC = () => {
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
@@ -201,7 +225,7 @@ const EmailPage: React.FC = () => {
         state: { 
           fromEmail: true, 
           emailSubject: selectedEmail.subject,
-          emailBody: selectedEmail.body,
+          emailBody: getCleanTextFromHtml(selectedEmail.body),
           emailId: selectedEmail.id
         } 
       });
@@ -227,6 +251,12 @@ const EmailPage: React.FC = () => {
   };
   
   if (isLoading) {
+    console.log("EmailPage render:", { 
+        isInitialized, 
+        isSignedIn, 
+        emailsCount: emails.length, 
+        isLoading 
+      });
     return (
       <EmailContainer>
         <p>Loading emails...</p>
@@ -307,7 +337,7 @@ const EmailPage: React.FC = () => {
               </EmailDetailHeader>
               
               <EmailDetailBody>
-                {selectedEmail.body}
+                {renderEmailContent(selectedEmail.body)}
               </EmailDetailBody>
             </>
           ) : (

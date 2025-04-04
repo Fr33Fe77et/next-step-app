@@ -2,19 +2,18 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Calendar, dateFnsLocalizer, View } from 'react-big-calendar';
 import { format, parse, startOfWeek, getDay, addMonths } from 'date-fns';
-import { enUS } from 'date-fns/locale/en-US';
+import { enUS } from 'date-fns/locale';
 import styled from 'styled-components';
+import { getTasks } from '../store/taskSlice';
 import { 
   initializeGoogleCalendar, 
   loginToGoogleCalendar, 
   getGoogleCalendarEvents,
-  getCalendarList,
-  loadCalendarSettings 
+  getCalendarList
 } from '../store/googleCalendarSlice';
 import { useAppDispatch, useAppSelector } from '../hooks/reduxHooks';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 import Button from '../components/common/Button';
-import { RootState } from '../store';
 import { reinitializeGoogleCalendar,
          toggleCalendarVisibility, } from '../store/googleCalendarSlice';
 
@@ -77,6 +76,14 @@ const localizer = dateFnsLocalizer({
   locales,
 });
 
+const [prevVisibleCalendarIds, setPrevVisibleCalendarIds] = useState<string[]>([]);
+
+// Helper function to compare arrays
+const arraysEqual = (a: string[], b: string[]) => {
+  if (a.length !== b.length) return false;
+  return a.every(id => b.includes(id));
+};
+
 // Define event types for the filter
 type EventSource = 'nextStep' | 'external' | 'all';
 type EventType = 'task' | 'meeting' | 'all';
@@ -110,6 +117,7 @@ interface CalendarEvent {
   resource: EventResource;
 }
 
+
 const CalendarPage: React.FC = () => {
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
@@ -122,7 +130,10 @@ const CalendarPage: React.FC = () => {
     events: googleEvents, 
     calendars,
     isLoading: googleLoading 
-  } = useAppSelector((state: RootState) => state.googleCalendar);
+  } = useAppSelector((state) => state.googleCalendar);
+
+  // Add this useState inside the component function
+  const [prevVisibleCalendarIds, setPrevVisibleCalendarIds] = useState<string[]>([]);
 
   // State for view controls
   const [date, setDate] = useState(new Date());
@@ -135,114 +146,93 @@ const CalendarPage: React.FC = () => {
       navigate('/login');
       return;
     }
-  
+
+    dispatch(getTasks());
+
     // Initialize Google Calendar API if not already done
     if (!isInitialized) {
-      dispatch(initializeGoogleCalendar())
-        .then(() => {
-          // After initialization, try to login
-          return dispatch(loginToGoogleCalendar());
-        })
-        .then(() => {
-          // After login, fetch calendars and settings
-          return dispatch(getCalendarList());
-        })
-        .then(() => {
-          // After getting calendars, load saved settings
-          return dispatch(loadCalendarSettings())
-            .catch(err => {
-              console.log('Failed to load calendar settings, using defaults');
-              // Set default visibility for primary calendar
-              if (calendars.length > 0) {
-                const primaryCalendar = calendars.find(calendar => calendar.primary);
-                if (primaryCalendar && !primaryCalendar.visible) {
-                  // Use the existing toggle function
-                  dispatch(toggleCalendarVisibility(primaryCalendar.id));
-                }
-              }
-            });
-        })
-        .catch(error => {
-          console.error('Error initializing calendar', error);
-        });
-    } else if (isSignedIn) {
-      // If already initialized and signed in, just get calendars and settings
-      dispatch(getCalendarList())
-        .then(() => {
-          return dispatch(loadCalendarSettings())
-            .catch(err => {
-              console.log('Failed to load calendar settings, using defaults');
-              // Set default visibility for primary calendar
-              if (calendars.length > 0) {
-                const primaryCalendar = calendars.find(calendar => calendar.primary);
-                if (primaryCalendar && !primaryCalendar.visible) {
-                  // Use the existing toggle function
-                  dispatch(toggleCalendarVisibility(primaryCalendar.id));
-                }
-              }
-            });
-        });
+      dispatch(initializeGoogleCalendar());
     }
-  // No need for the delayed refresh in a separate useEffect
-  // Only create the timeout if needed
-  let timer: NodeJS.Timeout | null = null;
-  
-  if (isInitialized && isSignedIn && calendars.length === 0) {
-    timer = setTimeout(() => {
-      dispatch(getCalendarList())
-        .then(() => {
-          return dispatch(loadCalendarSettings())
-            .catch(err => {
-              console.log('Failed to load calendar settings, using defaults');
-              // Set default visibility code would go here, but will likely
-              // not be needed since calendars.length === 0 in this condition
-            });
-        });
-    }, 500);
-  }
+  }, [user, dispatch, navigate, isInitialized]);
 
-  // Cleanup function to clear the timeout if component unmounts
-  return () => {
-    if (timer) clearTimeout(timer);
-  };
-}, [user, dispatch, navigate, isInitialized, isSignedIn, calendars]);
- 
-// Fetch Google Calendar events when date changes or when signed in
-useEffect(() => {
-  if (isInitialized && isSignedIn) {
-    // Get visible calendars
-    const visibleCalendarIds = calendars
-      .filter(cal => cal.visible)
-      .map(cal => cal.id);
+  // Add a second refresh after a short delay to ensure all calendars appear correctly
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      dispatch(getCalendarList());
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [dispatch]);
+
+  // Fetch Google Calendar events when date changes or when signed in
+  useEffect(() => {
+    if (isInitialized && isSignedIn) {
+      // Get visible calendars
+      const visibleCalendarIds = calendars
+        .filter(cal => cal.visible)
+        .map(cal => cal.id);
+        
+      // Calculate date range based on the current view
+      let startDate: Date;
+      let endDate: Date;
       
-    // Calculate date range based on the current view
-    let startDate: Date;
-    let endDate: Date;
+      switch (view) {
+        case 'month':
+          startDate = new Date(date.getFullYear(), date.getMonth(), 1);
+          endDate = new Date(date.getFullYear(), date.getMonth() + 1, 0);
+          break;
+        case 'week':
+          const weekStart = startOfWeek(date);
+          startDate = weekStart;
+          endDate = new Date(weekStart);
+          endDate.setDate(endDate.getDate() + 7);
+          break;
+        case 'day':
+          startDate = new Date(date);
+          endDate = new Date(date);
+          endDate.setHours(23, 59, 59);
+          break;
+        default:
+          startDate = new Date(date.getFullYear(), date.getMonth(), 1);
+          endDate = addMonths(startDate, 1);
+      }
+      
+      // Check if visible calendars have changed
+      const haveCalendarIdsChanged = 
+      prevVisibleCalendarIds.length !== visibleCalendarIds.length ||
+      !prevVisibleCalendarIds.every(id => visibleCalendarIds.includes(id));
     
-    switch (view) {
-      case 'month':
-        startDate = new Date(date.getFullYear(), date.getMonth(), 1);
-        endDate = new Date(date.getFullYear(), date.getMonth() + 1, 0);
-        break;
-      case 'week':
-        const weekStart = startOfWeek(date);
-        startDate = weekStart;
-        endDate = new Date(weekStart);
-        endDate.setDate(endDate.getDate() + 7);
-        break;
-      case 'day':
-        startDate = new Date(date);
-        endDate = new Date(date);
-        endDate.setHours(23, 59, 59);
-        break;
-      default:
-        startDate = new Date(date.getFullYear(), date.getMonth(), 1);
-        endDate = addMonths(startDate, 1);
+    if (haveCalendarIdsChanged) {
+      setPrevVisibleCalendarIds(visibleCalendarIds);
     }
     
     dispatch(getGoogleCalendarEvents({ startDate, endDate, calendarIds: visibleCalendarIds }));
   }
-}, [date, view, isInitialized, isSignedIn, calendars, dispatch]);
+}, [date, view, isInitialized, isSignedIn, dispatch, prevVisibleCalendarIds]);
+
+useEffect(() => {
+  if (isInitialized && isSignedIn && calendars.length > 0) {
+    const visibleCalendarIds = calendars
+      .filter(cal => cal.visible)
+      .map(cal => cal.id);
+      
+    // Update the tracked IDs, but don't trigger the events fetch
+    setPrevVisibleCalendarIds(prevIds => {
+      // Only update if they're different
+      if (prevIds.length !== visibleCalendarIds.length || 
+          !prevIds.every(id => visibleCalendarIds.includes(id))) {
+        return visibleCalendarIds;
+      }
+      return prevIds;
+    });
+  }
+}, [calendars, isInitialized, isSignedIn]);
+
+  // Helper function to compare arrays
+  const arraysEqual = (a: string[], b: string[]) => {
+    if (a.length !== b.length) return false;
+    return a.every(id => b.includes(id));
+  };
 
   // Format Next Step tasks as calendar events
   const nextStepEvents = useMemo(() => {
